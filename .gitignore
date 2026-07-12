@@ -1,0 +1,25 @@
+# Pintos build directories
+**/build/
+
+# Compiled files
+*.o
+*.d
+*.a
+*.so
+*.out
+*.bin
+
+# Test outputs
+*.output
+*.errors
+*.result
+
+# Editor settings
+.vscode/
+.idea/
+
+# Temporary files
+*~
+*.swp
+.DS_Store
+
