@@ -93,6 +93,13 @@ timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
+static bool less_tick(const struct list_elem *fs, const struct list_elem *sc, void *aux UNUSED)
+{
+    const struct thread *fs_t = list_entry(fs, struct thread, elem);
+    const struct thread *sc_t = list_entry(sc, struct thread, elem);
+
+    return fs_t->wakeup_tick < sc_t->wakeup_tick;
+}
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
@@ -102,10 +109,14 @@ timer_sleep (int64_t ticks) {
 	// while (timer_elapsed (start) < ticks)
 	// 	thread_yield ();
 
+	enum intr_level old_level = intr_disable();
 	struct thread *cur = thread_current();
+
 	cur->wakeup_tick = timer_ticks () + ticks;
-	list_insert(list_end(&sleep_list), &cur->elem);
+	list_insert_ordered(&sleep_list, &cur->elem, less_tick, NULL); // bs로 짜면 더 빠를 수도?
 	thread_block();
+
+	intr_set_level(old_level);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -138,18 +149,13 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
 
-	struct list_elem *e = list_begin(&sleep_list);
+	while(!list_empty (&sleep_list)){
+        struct thread *t = list_entry(list_front (&sleep_list), struct thread, elem);
 
-    while(e != list_end(&sleep_list)){
-        struct thread *t = list_entry(e, struct thread, elem);
+        if(t->wakeup_tick > ticks) break;
 
-        if(t->wakeup_tick <= ticks){
-            e = list_remove(e);
-            thread_unblock(t);
-        }
-        else{
-            e = list_next(e);
-        }
+        list_pop_front(&sleep_list);
+        thread_unblock(t);
     }
 }
 
