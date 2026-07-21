@@ -14,7 +14,6 @@
 #include "tests/userprog/sample.inc"
 #include "tests/lib.h"
 
-const char *test_name = "child-read";
 
 int
 main (int argc UNUSED, char *argv[]) 
@@ -23,6 +22,7 @@ main (int argc UNUSED, char *argv[])
   int byte_cnt;
   char *buffer;
   msg ("begin");
+	test_name = "child-read";
  
   if (!isdigit (*argv[1]))
     fail ("bad command-line arguments");

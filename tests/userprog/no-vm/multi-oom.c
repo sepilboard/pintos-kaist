@@ -34,7 +34,6 @@
 static const int EXPECTED_DEPTH_TO_PASS = 10;
 static const int EXPECTED_REPETITIONS = 10;
 
-const char *test_name = "multi-oom";
 
 int make_children (void);
 
@@ -142,6 +141,7 @@ make_children (void) {
 int
 main (int argc UNUSED, char *argv[] UNUSED) {
   msg ("begin");
+test_name = "multi-oom";
 
   int first_run_depth = make_children ();
   CHECK (first_run_depth >= EXPECTED_DEPTH_TO_PASS, "Spawned at least %d children.", EXPECTED_DEPTH_TO_PASS);
