@@ -18,8 +18,12 @@ SECTIONS
      the same address within the page on the next page up.  */
   . = DATA_SEGMENT_ALIGN (CONSTANT (MAXPAGESIZE), CONSTANT (COMMONPAGESIZE));
 
+  .data : ALIGN(4096) { *(.data) }
+  .bss : ALIGN(4096) { *(.bss) }
+  /*
   .data : { *(.data) }
   .bss : { *(.bss) }
+  */
 
   . = DATA_SEGMENT_RELRO_END (0, .);
 
