@@ -90,7 +90,12 @@ struct thread {
 	tid_t tid;                          /* Thread identifier. */
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
+
+	int default_priority;
 	int priority;                       /* Priority. */
+	struct lock *waited_lock;
+	struct list lock_waiters;
+	struct list_elem waiter_elem;
 
 	int wakeup_tick;
 
@@ -144,5 +149,8 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+void thread_try_yield(void);
+void thread_update_priority(struct thread *t);
 
 #endif /* threads/thread.h */
