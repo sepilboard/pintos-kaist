@@ -62,6 +62,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static bool thread_priority_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -206,6 +207,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	thread_try_yield();
 
 	return tid;
 }
@@ -308,10 +310,71 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+void thread_try_yield(void)
+{
+	enum intr_level old_level;
+
+	old_level = intr_disable();
+
+	if(!list_empty(&ready_list)){
+		struct list_elem *max_elem = list_max(&ready_list, thread_priority_less, NULL);
+		struct thread *highest = list_entry(max_elem, struct thread, elem);
+
+		if(highest->priority > thread_current()->priority){
+			thread_yield();
+		}
+	}
+
+	intr_set_level(old_level);
+}
+
+void thread_update_priority(struct thread *t)
+{
+	int prv_priority;
+	int new_priority;
+	struct list_elem *e;
+
+	ASSERT(t != NULL);
+
+	prv_priority = t->priority;
+	new_priority = t->default_priority;
+
+	/*
+	 * 현재 남아 있는 모든 donor를 확인하여
+	 * effective priority를 다시 계산한다.
+	 */
+	for(e = list_begin(&t->lock_waiters); e != list_end(&t->lock_waiters); e = list_next(e)){
+		struct thread *donor;
+		donor = list_entry(e, struct thread, waiter_elem);
+
+		if(new_priority < donor->priority){
+			new_priority = donor->priority;
+		}
+	}
+
+	t->priority = new_priority;
+
+	if(prv_priority != new_priority
+		&& t->waited_lock != NULL
+		&& t->waited_lock->holder != NULL){
+		thread_update_priority(t->waited_lock->holder);
+	}
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	enum intr_level old_level;
+	struct thread *current = thread_current();
+
+	ASSERT(PRI_MIN <= new_priority && new_priority <= PRI_MAX);
+
+	old_level = intr_disable();
+	current->default_priority = new_priority;
+	thread_update_priority(current);
+	intr_set_level(old_level);
+
+	thread_try_yield ();
 }
 
 /* Returns the current thread's priority. */
@@ -408,9 +471,19 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	t->default_priority = priority;
+	t->waited_lock = NULL;
+	list_init(&t->lock_waiters);
 	t->magic = THREAD_MAGIC;
 }
 
+static bool thread_priority_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+	struct thread *thread_b = list_entry(b, struct thread, elem);
+
+	return thread_a->priority < thread_b->priority;
+}
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
@@ -420,9 +493,13 @@ static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
-	else
-		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+	
+	struct list_elem *max_e = list_max(&ready_list, thread_priority_less,NULL);
+	list_remove(max_e);
+
+	return list_entry (max_e, struct thread, elem);
 }
+
 
 /* Use iretq to launch the thread */
 void
