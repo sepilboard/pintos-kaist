@@ -158,6 +158,41 @@ error:
 	thread_exit ();
 }
 
+static void push_to_stack(struct intr_frame *_if, const void *val, size_t size)
+{
+	_if->rsp -= size;
+	memcpy(_if->rsp, val, size);
+}
+
+static void setup_arguments(char **argv, int argc, struct intr_frame *_if)
+{
+	for(int i = argc-1; i>=0; i--){
+		size_t argument_size = strlen(argv[i]) + 1;
+		push_to_stack(_if, argv[i], argument_size);
+
+		argv[i] = (char *)_if->rsp;
+	}
+
+	size_t res = _if->rsp % 8;
+	uint64_t zero = 0;
+	if(res != 0){
+		push_to_stack(_if, &zero, res);
+	}
+
+	char *nullptr = NULL;
+	push_to_stack(_if, &nullptr, sizeof nullptr);
+
+	for(int i = argc - 1; i>=0; i--){
+		push_to_stack(_if, &argv[i], sizeof argv[i]);
+	}
+
+	void *fake_return_address = NULL;
+	push_to_stack(_if, &fake_return_address, sizeof fake_return_address);
+
+	_if->R.rdi = argc;
+	_if->R.rsi = _if->rsp; // char** argv 주소
+}
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
@@ -173,11 +208,44 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
+	
+	int max_argc = PGSIZE / sizeof (char *);
+	int argc = 0;
+	char **argv = palloc_get_page(PAL_ZERO);
+
+	// 파싱
+	char *save_ptr = NULL;
+	char *token = strtok_r(file_name, " ", &save_ptr);
+	while(token != NULL){
+		if(argc >= max_argc){
+			palloc_free_page(argv);
+			palloc_free_page(file_name);
+			return -1;
+		}
+
+		argv[argc++] = token;
+		token = strtok_r(NULL, " ", &save_ptr);
+	}
+
+	if(argc == 0){
+		palloc_free_page (argv);
+		palloc_free_page (file_name);
+		return -1;
+	}
+
+	strlcpy(thread_current()->name, argv[0], sizeof thread_current()->name);
+
 	/* We first kill the current context */
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (argv[0], &_if);
+
+	// argument 올리기
+	if(success){
+		setup_arguments(argv, argc, &_if);
+	}
+	palloc_free_page (argv);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -204,6 +272,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+
+	//임시 wait
+	while(1);
 	return -1;
 }
 
