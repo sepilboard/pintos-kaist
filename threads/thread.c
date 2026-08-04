@@ -312,8 +312,8 @@ thread_yield (void) {
 
 void thread_try_yield(void)
 {
+	bool yield_flag = false;
 	enum intr_level old_level;
-
 	old_level = intr_disable();
 
 	if(!list_empty(&ready_list)){
@@ -321,8 +321,13 @@ void thread_try_yield(void)
 		struct thread *highest = list_entry(max_elem, struct thread, elem);
 
 		if(highest->priority > thread_current()->priority){
-			thread_yield();
+			yield_flag = true;
 		}
+	}
+
+	if(yield_flag){
+		if(intr_context()) intr_yield_on_return();
+		else thread_yield();
 	}
 
 	intr_set_level(old_level);

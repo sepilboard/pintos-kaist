@@ -5,7 +5,7 @@ $(PROGS): CPPFLAGS += -I$(SRCDIR)/include/lib/user -I.
 $(PROGS): CFLAGS += $(TDEFINE) -fno-stack-protector -Wno-builtin-declaration-mismatch
 
 # Linker flags.
-$(PROGS): LDFLAGS = -nostdlib -static -Wl,-T,$(LDSCRIPT)
+$(PROGS): LDFLAGS = -nostdlib -static -Wl,-z,noseparate-code -Wl,-T,$(LDSCRIPT)
 $(PROGS): LDSCRIPT = $(SRCDIR)/lib/user/user.lds
 
 # Library code shared between kernel and user programs.

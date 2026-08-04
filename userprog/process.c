@@ -233,13 +233,22 @@ process_exec (void *f_name) {
 		return -1;
 	}
 
+	// Debug
+	// printf("[DEBUG] file_name = '%s'\n", file_name);
+	// printf("[DEBUG] argc = %d\n", argc);
+	// for(int i = 0; i<argc; i++){
+	// 	printf("[DEBUG] argv[%d] = '%s'\n", i, argv[i]);
+	// }
+
 	strlcpy(thread_current()->name, argv[0], sizeof thread_current()->name);
 
 	/* We first kill the current context */
 	process_cleanup ();
 
+	// printf("[DEBUG] before load: '%s'\n", argv[0]);
 	/* And then load the binary */
 	success = load (argv[0], &_if);
+	// printf("[DEBUG] load result = %d\n", success);
 
 	// argument 올리기
 	if(success){
