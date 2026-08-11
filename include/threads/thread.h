@@ -43,6 +43,8 @@ struct wait_status
     struct list_elem elem;
 };
 
+#define FD_COUNT 64
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -124,6 +126,9 @@ struct thread {
     bool is_user_process;
     struct list children;
     struct wait_status *wait_status;
+
+	struct file *fd_table[FD_COUNT];
+	int next_fd;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

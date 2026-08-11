@@ -481,10 +481,17 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&t->lock_waiters);
 	t->magic = THREAD_MAGIC;
 
+	#ifdef USERPROG
 	t->exit_status = -1;
     t->is_user_process = false;
     t->wait_status = NULL;
     list_init(&t->children);
+
+	for(int i = 0; i<FD_COUNT; i++){
+		t->fd_table[i] = NULL;
+	}
+	t->next_fd = 2;
+	#endif
 }
 
 static bool thread_priority_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
