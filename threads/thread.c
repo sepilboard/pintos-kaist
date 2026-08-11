@@ -480,6 +480,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->waited_lock = NULL;
 	list_init(&t->lock_waiters);
 	t->magic = THREAD_MAGIC;
+
+	t->exit_status = -1;
+    t->is_user_process = false;
+    t->wait_status = NULL;
+    list_init(&t->children);
 }
 
 static bool thread_priority_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)

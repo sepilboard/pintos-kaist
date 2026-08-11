@@ -9,6 +9,8 @@
 #include "vm/vm.h"
 #endif
 
+#include "threads/synch.h"
+
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -27,6 +29,19 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+struct wait_status
+{
+    tid_t tid;
+    int exit_status;
+
+    struct semaphore dead;
+
+    struct lock ref_lock;
+    int ref_cnt;
+
+    struct list_elem elem;
+};
 
 /* A kernel thread or user process.
  *
@@ -105,6 +120,10 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+	int exit_status;
+    bool is_user_process;
+    struct list children;
+    struct wait_status *wait_status;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

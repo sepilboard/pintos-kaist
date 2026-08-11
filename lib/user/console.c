@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "lib/user/stdio.h"
 #include <string.h>
 #include <syscall.h>
 #include <syscall-nr.h>
