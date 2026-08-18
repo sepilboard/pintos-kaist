@@ -139,7 +139,12 @@ process_create_initd (const char *file_name) {
     args->wait_status = ws;
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, args);
+	char thread_name[16];
+	strlcpy(thread_name, file_name, sizeof thread_name);
+	char *name_end = strchr(thread_name, ' ');
+	if(name_end != NULL) *name_end = '\0';
+
+	tid = thread_create (thread_name, PRI_DEFAULT, initd, args);
 	if (tid == TID_ERROR){
 		free(args);
 		free(ws);
@@ -287,6 +292,15 @@ __do_fork (void *aux) {
 	 * TODO:       the resources of parent.*/
 
 	process_init ();
+
+	for(int i = 2; i<FD_COUNT; i++){
+      	struct file *parent_file = args->parent->fd_table[i];
+
+		if(parent_file != NULL){
+			current->fd_table[i] = file_duplicate (parent_file);
+			if(current->fd_table[i] == NULL) goto error;
+		}
+  	}
 
 	args->success = true;
 	sema_up(&args->fork_sema);
