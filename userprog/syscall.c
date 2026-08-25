@@ -40,10 +40,9 @@ static void check_user_address(const void *addr)
 {
 	struct thread *cur = thread_current();
 
-	if(addr == NULL ||
-		!is_user_vaddr(addr) ||
-		pml4_get_page(cur->pml4, addr) == NULL)
+	if(addr == NULL || !is_user_vaddr(addr)){
 		syscall_exit(-1);
+	}
 }
 
 static void check_user_buffer(const void *buffer, size_t size, bool writable)

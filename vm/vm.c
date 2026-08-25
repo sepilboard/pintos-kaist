@@ -8,6 +8,8 @@
 #include "threads/vaddr.h"
 #include "threads/thread.h"
 
+#define STACK_MAX (1<<20)
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -162,7 +164,9 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
+	void *page = pg_round_down(addr);
+	vm_alloc_page(VM_ANON | VM_MARKER_0, page, 1);
 }
 
 /* Handle the fault on write_protected page */
@@ -175,7 +179,15 @@ bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 		bool user UNUSED, bool write, bool not_present UNUSED) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-	struct page *page = spt_find_page(spt, addr);
+	struct page *page = NULL;
+
+	void *stack_pointer = f->rsp;
+	if(stack_pointer-8 == addr
+		&& USER_STACK - STACK_MAX <= stack_pointer-8 && stack_pointer-8 < USER_STACK){
+		vm_stack_growth(addr);
+	}
+
+	page = spt_find_page(spt, addr);
 
 	if(page == NULL){
 		return false;
