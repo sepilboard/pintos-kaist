@@ -2,6 +2,14 @@
 
 #include "vm/vm.h"
 #include "devices/disk.h"
+#include "threads/synch.h"
+#include "lib/kernel/bitmap.h"
+#include "threads/vaddr.h"
+#include <string.h>
+
+#define SECTOR_PER_PAGE (PGSIZE / DISK_SECTOR_SIZE)
+static struct bitmap *swap_bitmap;
+static struct lock swap_lock;
 
 /* DO NOT MODIFY BELOW LINE */
 static struct disk *swap_disk;
@@ -20,8 +28,10 @@ static const struct page_operations anon_ops = {
 /* Initialize the data for anonymous pages */
 void
 vm_anon_init (void) {
-	/* TODO: Set up the swap_disk. */
-	swap_disk = NULL;
+	swap_disk = disk_get(1, 1);
+	swap_bitmap = bitmap_create(disk_size(swap_disk)/SECTOR_PER_PAGE);
+	bitmap_set_all(swap_bitmap, false);
+	lock_init(&swap_lock);
 }
 
 /* Initialize the file mapping */
@@ -32,6 +42,7 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 	return true;
 
 	struct anon_page *anon_page = &page->anon;
+	anon_page->swap_idx = BITMAP_ERROR;
 }
 
 /* Swap in the page by read contents from the swap disk. */
@@ -44,6 +55,21 @@ anon_swap_in (struct page *page, void *kva) {
 static bool
 anon_swap_out (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
+
+	lock_acquire(&swap_lock);
+
+	size_t idx = bitmap_scan_and_flip(swap_bitmap, 0, 1, false);
+	if(idx == BITMAP_ERROR){
+		lock_release(&swap_lock);
+		return false;
+	}
+
+	for(int i = 0; i<SECTOR_PER_PAGE; i++){
+		disk_write(swap_disk, idx*SECTOR_PER_PAGE + i, page->frame->kva + i*DISK_SECTOR_SIZE);
+	}
+	anon_page->swap_idx = idx;
+
+	lock_release(&swap_lock);
 }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
