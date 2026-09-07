@@ -50,6 +50,8 @@ struct page {
 	bool writable;
 	struct list_elem spt_elem;
 
+	int mmap_cnt;
+
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	union {

@@ -180,6 +180,9 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_CLOSE:
 			syscall_close(f->R.rdi);
 			break;
+		case SYS_MMAP:
+			f->R.rax = syscall_mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+			break;
 
 		default:
 			printf("Unknown system call: %lld\n", (long long)f->R.rax);
@@ -357,4 +360,12 @@ static void syscall_close(int fd)
 	lock_acquire(&filesys_lock);
 	file_close(file);
 	lock_release(&filesys_lock);
+}
+
+static void *syscall_mmap(void *addr, size_t length, int writable, int fd, off_t ofs)
+{
+	struct file *file = get_file(fd);
+	if(file == NULL) return NULL;
+
+	return do_mmap(addr, length, writable, file, ofs);
 }
