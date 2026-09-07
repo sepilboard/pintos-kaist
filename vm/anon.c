@@ -49,6 +49,22 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 static bool
 anon_swap_in (struct page *page, void *kva) {
 	struct anon_page *anon_page = &page->anon;
+
+	if(anon_page->swap_idx == BITMAP_ERROR){
+		memset(kva, 0, PGSIZE);
+		return true;
+	}
+
+	lock_acquire(&swap_lock);
+
+	for(int i = 0; i<SECTOR_PER_PAGE; i++){
+		disk_read(swap_bitmap, anon_page->swap_idx*SECTOR_PER_PAGE + i, kva + i*DISK_SECTOR_SIZE);
+	}
+	bitmap_reset(swap_bitmap, anon_page->swap_idx);
+	anon_page->swap_idx = BITMAP_ERROR;
+
+	lock_release(&swap_lock);
+	return true;
 }
 
 /* Swap out the page by writing contents to the swap disk. */
@@ -76,4 +92,19 @@ anon_swap_out (struct page *page) {
 static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
+
+	if(anon_page->swap_idx != BITMAP_ERROR){
+		lock_acquire(&swap_lock);
+		bitmap_reset(swap_bitmap, anon_page->swap_idx);
+		lock_release(&swap_lock);
+	}
+
+	if(page->frame != NULL){
+
+		list_remove(&(page->spt_elem));
+
+		palloc_free_page(page->frame);
+		free(page->frame);
+		page->frame = NULL;
+	}
 }
