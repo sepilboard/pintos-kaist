@@ -25,26 +25,49 @@ bool
 file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &file_ops;
-
 	struct file_page *file_page = &page->file;
+
+	struct lazy_load_args *args = (struct lazy_load_args *)page->uninit.aux;
+
+	file_page->file = args->file;
+	file_page->ofs = args->ofs;
+	file_page->page_read_bytes = args->read_bytes;
+	file_page->page_zero_bytes = args->zero_bytes;
 }
 
 /* Swap in the page by read contents from the file. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
 	struct file_page *file_page UNUSED = &page->file;
+
+	// file_read(file_page->file, kva, file_page->ofs);
+	file_read_at(file_page->file, kva, file_page->page_read_bytes, file_page->ofs);
+
+	return true;
 }
 
 /* Swap out the page by writeback contents to the file. */
 static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
+
+	if(pml4_is_dirty(thread_current()->pml4, page->va)){
+		file_write_at(file_page->file, page->va, file_page->page_read_bytes, file_page->ofs);
+		pml4_set_dirty(thread_current()->pml4, page->va, false);
+	}
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
+
+	if(pml4_is_dirty(thread_current()->pml4, page->va)){
+		file_write_at(file_page->file, page->va, file_page->page_read_bytes, file_page->ofs);
+		pml4_set_dirty(thread_current()->pml4, page->va, false);
+	}
+
+	pml4_clear_page(thread_current()->pml4, page->va);
 }
 
 /* Do the mmap */
