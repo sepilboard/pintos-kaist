@@ -36,6 +36,9 @@ static void syscall_seek(int, unsigned);
 static unsigned syscall_tell(int);
 static void syscall_close(int);
 
+static void *syscall_mmap(void *addr, size_t length, int writable, int fd, off_t ofs);
+static void syscall_munmap(void *addr);
+
 static void check_user_address(const void *addr)
 {
 	struct thread *cur = thread_current();
@@ -182,6 +185,9 @@ syscall_handler (struct intr_frame *f) {
 			break;
 		case SYS_MMAP:
 			f->R.rax = syscall_mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+			break;
+		case SYS_MUNMAP:
+			syscall_munmap((void * ) f->R.rdi);
 			break;
 
 		default:
@@ -368,4 +374,9 @@ static void *syscall_mmap(void *addr, size_t length, int writable, int fd, off_t
 	if(file == NULL) return NULL;
 
 	return do_mmap(addr, length, writable, file, ofs);
+}
+
+static void syscall_munmap(void *addr)
+{
+	do_munmap(addr);
 }

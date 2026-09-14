@@ -7,6 +7,8 @@
 #include "threads/vaddr.h"
 #include <string.h>
 
+#include "threads/mmu.h"
+
 #define SECTOR_PER_PAGE (PGSIZE / DISK_SECTOR_SIZE)
 static struct bitmap *swap_bitmap;
 static struct lock swap_lock;
@@ -39,10 +41,11 @@ bool
 anon_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &anon_ops;
-	return true;
-
+	
 	struct anon_page *anon_page = &page->anon;
 	anon_page->swap_idx = BITMAP_ERROR;
+
+	return true;
 }
 
 /* Swap in the page by read contents from the swap disk. */
@@ -58,7 +61,7 @@ anon_swap_in (struct page *page, void *kva) {
 	lock_acquire(&swap_lock);
 
 	for(int i = 0; i<SECTOR_PER_PAGE; i++){
-		disk_read(swap_bitmap, anon_page->swap_idx*SECTOR_PER_PAGE + i, kva + i*DISK_SECTOR_SIZE);
+		disk_read(swap_disk, anon_page->swap_idx*SECTOR_PER_PAGE + i, kva + i*DISK_SECTOR_SIZE);
 	}
 	bitmap_reset(swap_bitmap, anon_page->swap_idx);
 	anon_page->swap_idx = BITMAP_ERROR;
@@ -86,6 +89,7 @@ anon_swap_out (struct page *page) {
 	anon_page->swap_idx = idx;
 
 	lock_release(&swap_lock);
+	return true;
 }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
@@ -100,11 +104,8 @@ anon_destroy (struct page *page) {
 	}
 
 	if(page->frame != NULL){
-
-		list_remove(&(page->spt_elem));
-
-		palloc_free_page(page->frame);
-		free(page->frame);
+		pml4_clear_page(page->pml4, page->va);
+		vm_free_frame(page->frame);
 		page->frame = NULL;
 	}
 }

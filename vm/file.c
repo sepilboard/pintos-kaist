@@ -1,7 +1,27 @@
 /* file.c: Implementation of memory backed file object (mmaped object). */
 
 #include "vm/vm.h"
-#include "userprog/process.c"
+#include "threads/vaddr.h"
+
+struct lazy_load_args{
+	struct file *file;
+	off_t ofs;
+	size_t read_bytes;
+	size_t zero_bytes;
+};
+static bool
+lazy_load_segment (struct page *page, void *aux) {
+	struct lazy_load_args *args = (struct lazy_load_args *)aux;
+
+	file_seek(args->file, args->ofs);
+	if(file_read(args->file, page->frame->kva, args->read_bytes) != args->read_bytes){
+		return false;
+	}
+	
+	memset(page->frame->kva + args->read_bytes, 0, args->zero_bytes);
+
+	return true;
+}
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -33,6 +53,8 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	file_page->ofs = args->ofs;
 	file_page->page_read_bytes = args->read_bytes;
 	file_page->page_zero_bytes = args->zero_bytes;
+
+	return true;
 }
 
 /* Swap in the page by read contents from the file. */
@@ -51,10 +73,12 @@ static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
 
-	if(pml4_is_dirty(thread_current()->pml4, page->va)){
-		file_write_at(file_page->file, page->va, file_page->page_read_bytes, file_page->ofs);
-		pml4_set_dirty(thread_current()->pml4, page->va, false);
+	if(pml4_is_dirty(page->pml4, page->va)){
+		file_write_at(file_page->file, page->frame->kva, file_page->page_read_bytes, file_page->ofs);
+		pml4_set_dirty(page->pml4, page->va, false);
 	}
+
+	return true;
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
@@ -62,12 +86,16 @@ static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
 
-	if(pml4_is_dirty(thread_current()->pml4, page->va)){
-		file_write_at(file_page->file, page->va, file_page->page_read_bytes, file_page->ofs);
-		pml4_set_dirty(thread_current()->pml4, page->va, false);
+	if(pml4_is_dirty(page->pml4, page->va)){
+		file_write_at(file_page->file, page->frame->kva, file_page->page_read_bytes, file_page->ofs);
+		pml4_set_dirty(page->pml4, page->va, false);
 	}
 
-	pml4_clear_page(thread_current()->pml4, page->va);
+	if(page->frame != NULL){
+		pml4_clear_page(page->pml4, page->va);
+		vm_free_frame(page->frame);
+		page->frame = NULL;
+	}
 }
 
 /* Do the mmap */
@@ -115,12 +143,17 @@ do_mmap (void *addr, size_t length, int writable,
 void
 do_munmap (void *addr) {
 	struct supplemental_page_table *spt = &(thread_current()->spt);
+	
 	struct page *page = spt_find_page(spt, addr);
+	if(page == NULL) return;
 	int cnt = page->mmap_cnt;
-	for(int i = 0; i<cnt; i++){
-		if(page != NULL) destroy(page);
 
-		addr += PGSIZE;
+	for(int i = 0; i<cnt; i++){
 		page = spt_find_page(spt, addr);
+		if(page == NULL) continue;;
+
+		spt_remove_page(spt, page);
+		addr += PGSIZE;
 	}
 }
+
