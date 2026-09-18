@@ -8,6 +8,8 @@
 #include "threads/vaddr.h"
 #include "threads/thread.h"
 
+#include <string.h>
+
 #define STACK_MAX (1<<20)
 
 struct list frame_table;
@@ -80,6 +82,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		if(page == NULL) return false;
 
 		uninit_new(page, upage, init, type, aux, page_initializer);
+		page->origin_writable = writable;
 		page->writable = writable;
 		page->pml4 = thread_current()->pml4;
 
@@ -202,7 +205,35 @@ vm_stack_growth (void *addr) {
 
 /* Handle the fault on write_protected page */
 static bool
-vm_handle_wp (struct page *page UNUSED) {
+vm_handle_wp (struct page *page) {
+	struct frame *frame = page->frame;
+	if(!page->origin_writable){
+		return false;
+	}
+
+	if(frame->ref_cnt == 1){
+		pml4_set_page(page->pml4, page->va, frame->kva, true);
+		page->writable = page->origin_writable;
+		return true;
+	}
+
+	
+	struct frame *new_frame = vm_get_frame();
+	if(new_frame == NULL) return false;
+	
+	memcpy(new_frame->kva, frame->kva, PGSIZE);
+	
+	frame->ref_cnt--;
+	new_frame->page = page;
+	new_frame->ref_cnt = 1;
+	
+	pml4_set_page(page->pml4, page->va, new_frame->kva, true);
+	// printf("ok\n");
+
+	page->writable = true;
+	page->frame = new_frame;
+
+	return true;
 }
 
 /* Return true on success */
@@ -225,7 +256,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 	}
 
 	if(write && !page->writable){
-		return false;
+		return vm_handle_wp(page);
 	}
 
 	return vm_do_claim_page (page);
@@ -279,6 +310,8 @@ vm_do_claim_page (struct page *page) {
 		return false;
 	}
 
+	frame->ref_cnt = 1;
+
 	return true;
 }
 
@@ -295,12 +328,32 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 	for(struct list_elem *e = list_begin(&src->pages);
 	e != list_end(&src->pages); e = list_next(e)){
 		struct page *src_page = list_entry(e, struct page, spt_elem);
-		enum vm_type type = page_get_type(src_page);
+		// enum vm_type type = page_get_type(src_page);
 
-		if(!vm_alloc_page(type, src_page->va, src_page->writable)){
-			return false;
+		if(VM_TYPE(src_page->operations->type) == VM_UNINIT){
+			vm_initializer *init = src_page->uninit.init;
+			void *aux = src_page->uninit.aux;
+
+			// printf("ok\n");
+
+			vm_alloc_page_with_initializer(src_page->uninit.type, src_page->va, src_page->writable, init, aux);
+		}
+		else{
+			struct page *child_page = (struct page *)malloc(sizeof(struct page));
+			memcpy(child_page, src_page, sizeof(struct page));
+			child_page->pml4 = thread_current()->pml4;
+			
+			pml4_set_page(src_page->pml4, src_page->va, src_page->frame->kva, false);
+			pml4_set_page(child_page->pml4, src_page->va, src_page->frame->kva, false);
+			src_page->writable = false;
+			child_page->writable = false;
+			spt_insert_page(dst, child_page);
+	
+			src_page->frame->ref_cnt++;
 		}
 	}
+
+	return true;
 }
 
 /* Free the resource hold by the supplemental page table */

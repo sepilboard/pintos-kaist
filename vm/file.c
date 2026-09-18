@@ -92,8 +92,12 @@ file_backed_destroy (struct page *page) {
 	}
 
 	if(page->frame != NULL){
+		page->frame->ref_cnt--;
 		pml4_clear_page(page->pml4, page->va);
-		vm_free_frame(page->frame);
+
+		if(page->frame->ref_cnt == 0){
+			vm_free_frame(page->frame);
+		}
 		page->frame = NULL;
 	}
 }

@@ -265,7 +265,10 @@ static int syscall_open(const char* user_file)
 	struct file* file = filesys_open(file_name);
 	palloc_free_page(file_name);
 	
-	if(file == NULL) return -1;
+	if(file == NULL){
+		lock_release(&filesys_lock);
+		return -1;
+	}
 	
 	struct thread *cur = thread_current();
 	int ret = -1;

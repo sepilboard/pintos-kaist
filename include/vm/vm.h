@@ -47,6 +47,7 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
+	bool origin_writable;
 	bool writable;
 	struct list_elem spt_elem;
 	uint64_t *pml4;
@@ -70,6 +71,7 @@ struct frame {
 	void *kva;
 	struct page *page;
 	struct list_elem frame_elem;
+	int ref_cnt;
 };
 
 /* The function table for page operations.
